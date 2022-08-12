@@ -1,3 +1,46 @@
+function Vdist(...)
+    -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    --  
+    -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    local args = table.pack(...)
+    local set1, set2;
+    local type1 = type(args[1]);
+    if type1 == "number" then
+        set1 = vector3(args[1], args[2], args[3])
+        local type2 = type(args[4]);
+        if type2 == "number" then
+            set2 = vector3(args[4], args[5], args[6]);
+        elseif type2 == "table" then
+            set2 = vector3(args[4].x, args[4].y, args[4].z);
+        elseif type2 == "vector3" then
+            set2 = args[4];
+        end
+    elseif type1 == "table" then
+        set1 = vector3(args[1].x, args[1].y, args[1].z)
+        local type2 = type(args[2]);
+        if type2 == "number" then
+            set2 = vector3(args[2], args[3], args[4]);
+        elseif type2 == "table" then
+            set2 = vector3(args[2].x, args[2].y, args[2].z);
+        elseif type2 == "vector3" then
+            set2 = args[2];
+        end
+    elseif type1 == "vector3" then
+        set1 = args[1];
+        local type2 = type(args[2]);
+        if type2 == "number" then
+            set2 = vector3(args[2], args[3], args[4]);
+        elseif type2 == "table" then
+            set2 = vector3(args[2].x, args[2].y, args[2].z);
+        elseif type2 == "vector3" then
+            set2 = args[2];
+        end
+    end
+    return #(set1 - set2)
+end
+
+
+
 --[[
 ──────────────────────────────────────────────────────────────
 
@@ -11,58 +54,215 @@
 
 ──────────────────────────────────────────────────────────────
 ]]
+RegisterNetEvent('knight-duty:onenterduty')
+AddEventHandler('knight-duty:onenterduty', function(unit)
+    if unit['isleo'] then
+        if not unit['ispublic'] then
+            FireOnduty = true
+        end
+        LEOOnduty = true
+    else
+        LEOOnduty = false
+    end
+    if unit['isfire'] then
+        FireOnduty = true
+    else
+        FireOnduty = false
+    end
+    if unit['ispublic'] then
+        PublicDuty = true
+    else
+        PublicDuty = false
+    end
+end)
+
+RegisterNetEvent('knight-duty:onexitduty')
+AddEventHandler('knight-duty:onexitduty', function()
+    LEOOnduty = false
+    FireOnduty = false
+    PublicDuty = false
+end)
 
 
+local function AnimationComplete( player, animationD, animationN, time, cycles )
+	local animation = true
+	local count = 0
+	repeat 
+		if ( GetEntityAnimCurrentTime( player, animationD, animationN ) < time ) then
+			Citizen.Wait(0)
+		end
+		count = count + 1
+		animation = IsEntityPlayingAnim(player, animationD, animationN , 3)
+	until (not animation or count == cycles)
+
+	return true
+end
+
+function LoadAnimationDictionary(animationD) -- Simple way to load animation dictionaries to save lines.
+	while(not HasAnimDictLoaded(animationD)) do
+		RequestAnimDict(animationD)
+		Citizen.Wait(1)
+    end
+end
 
 --Cuffing Event
 local isCuffed = false
+local cuff_debug_enabled = false
+
+RegisterCommand('debug_handcuffs', function(source,args,raw)
+    if cuff_debug_enabled then
+        TriggerEvent('SEM_InteractionMenu:Cuff', 6942069)
+    end
+end)
+
+function Set_Cuffed(state)
+    isCuffed = (state == true)
+    print("Setting Cuffs to", isCuffed)
+    SetEnableHandcuffs(PlayerPedId(), isCuffed)
+end
+
 RegisterNetEvent('SEM_InteractionMenu:Cuff')
-AddEventHandler('SEM_InteractionMenu:Cuff', function()
-	local Ped = PlayerPedId()
-	if (DoesEntityExist(Ped)) then
-		Citizen.CreateThread(function()
-            RequestAnimDict('mp_arresting')
-            while not HasAnimDictLoaded('mp_arresting') do
-                Citizen.Wait(0)
+AddEventHandler('SEM_InteractionMenu:Cuff', function(Player)
+    local myPed = PlayerPedId()
+    local debug = false
+    local cuffer = 0
+    local heading = 0.0
+    local continue = true
+
+    if isCuffed then
+        Wait(3500)
+        Set_Cuffed(false)
+        ClearPedTasksImmediately(myPed)
+        TriggerServerEvent('InteractSound_SV:PlayWithinDistance', 5.0, 'Uncuff', 0.7)
+    else
+        if Player == 6942069 then
+            print("Debugging Cuffs")
+            debug = true
+        end
+
+        if GetResourceState('qb-lock') == "started" then
+            print('Trying a lockpick')
+            exports['qb-lock']:StartLockPickCircle(math.random(1,3), math.random(10,15), function(success)
+                if success then
+                    print('Lockpick success')
+                    ExecuteCommand("do *Pulls Away From Cuffs*")
+                    continue = false
+                else
+                    print('Lockpick fail')
+                end
+            end)
+        end
+
+
+        if continue then
+            TriggerServerEvent('InteractSound_SV:PlayOnSource', 'doorbell',0.1)
+            if not debug then
+                cuffer = GetPlayerPed(GetPlayerFromServerId(Player))
+                heading = GetEntityHeading(cuffer)
             end
 
-            if isCuffed then
-                isCuffed = false
-                Citizen.Wait(500)
-                SetEnableHandcuffs(Ped, false)
-                ClearPedTasksImmediately(Ped)
-            else
-                isCuffed = true
-				SetEnableHandcuffs(Ped, true)
-				TaskPlayAnim(Ped, 'mp_arresting', 'idle', 8.0, -8, -1, 49, 0, 0, 0, 0)
+            while (not HasAnimDictLoaded("mp_arrest_paired")) do
+                RequestAnimDict("mp_arrest_paired")
+                Citizen.Wait(5)
             end
+
+            TriggerServerEvent('InteractSound_SV:PlayWithinDistance', 5.0, 'handcuff', 0.7)
+
+            if not debug then
+                SetEntityCoords(myPed, GetOffsetFromEntityInWorldCoords(cuffer, 0.0, 0.45, 0.0))
+            end
+
+            Citizen.Wait(100)
+            SetEntityHeading(myPed, heading)
+            TaskPlayAnim(myPed, "mp_arrest_paired", "crook_p2_back_right", 3.0, 3.0, -1, 0, 0, 0, 0, 0)
+            Citizen.Wait(2500)
+            Set_Cuffed(true)
+        end
+    end
+end)
+
+
+RegisterNetEvent('SEM_InteractionMenu:CuffAnim')
+AddEventHandler('SEM_InteractionMenu:CuffAnim', function(Player)
+    local Ped = GetPlayerPed(GetPlayerFromServerId(Player))
+    if (DoesEntityExist(Ped)) then
+		Citizen.CreateThread(function()
+            LoadAnimationDictionary('mp_arresting')
+            LoadAnimationDictionary('mp_arrest_paired')
+
+                Citizen.CreateThread(function()
+                    HandCuffAnimation(Ped)
+                end)
 		end)
 	end
 end)
 
+function HandCuffAnimation()
+    while (not HasAnimDictLoaded("mp_arrest_paired")) do
+        RequestAnimDict("mp_arrest_paired")
+        Citizen.Wait(5)
+    end
+	Citizen.Wait(100)
+    TaskPlayAnim(GetPlayerPed(-1), "mp_arrest_paired", "cop_p2_back_right", 3.0, 3.0, -1, 48, 0, 0, 0, 0)
+	Citizen.Wait(3500)
+    TaskPlayAnim(GetPlayerPed(-1), "mp_arrest_paired", "exit", 3.0, 3.0, -1, 48, 0, 0, 0, 0)
+end
+
+RegisterNetEvent('SEM_InteractionMenu:CuffInit')
+AddEventHandler('SEM_InteractionMenu:CuffInit', function()
+    local Ped = GetPlayerPed(-1)
+    if (DoesEntityExist(Ped)) then
+		Citizen.CreateThread(function()
+            LoadAnimationDictionary('mp_arrest_paired')
+
+            TaskPlayAnim(Ped , "mp_arrest_paired", "cop_p2_back_right", 8.0, -8, 2000, 48, 0, 0, 0, 0)
+            
+		end)
+	end 
+end)
+
+local needsRagdollReset = false
 --Cuff Animation & Restructions
 Citizen.CreateThread(function()
 	while true do
 		Citizen.Wait(1)
 
         if isCuffed then
-            if not IsEntityPlayingAnim(GetPlayerPed(PlayerId()), 'mp_arresting', 'idle', 3) then
-                TaskPlayAnim(GetPlayerPed(PlayerId()), 'mp_arresting', 'idle', 8.0, -8, -1, 49, 0, 0, 0, 0)
+            local ped = PlayerPedId()
+            SetEnableHandcuffs(ped, true)
+
+            if IsPedRagdoll(ped) then
+                print("Ragdolling")
+                needsRagdollReset = true
             end
 
-            SetCurrentPedWeapon(PlayerPedId(), 'weapon_unarmed', true)
-            
+            if (not IsEntityPlayingAnim(ped, "mp_arresting", "idle", 3)) or needsRagdollReset then
+                LoadAnimationDictionary('mp_arresting')
+                print("playing anim")
+                ClearPedTasks()
+                TaskPlayAnim(ped, "mp_arresting", "idle", 64.0, 1.0, -1, 49, 0, 0, 0, 0)
+                needsRagdollReset = false
+            end
+            SetPedMoveRateOverride(ped, 0.75)
+            SetCurrentPedWeapon(ped, 'weapon_unarmed', true)
+
             if not Config.VehEnterCuffed then
                 DisableControlAction(1, 23, true) --F | Enter Vehicle
                 DisableControlAction(1, 75, true) --F | Exit Vehicle
             end
+
+            DisableControlAction(0, 21,  true) -- disable sprint
 			DisableControlAction(1, 140, true) --R
 			DisableControlAction(1, 141, true) --Q
-			DisableControlAction(1, 142, true) --LMB
-			SetPedPathCanUseLadders(GetPlayerPed(PlayerId()), false)
-			if IsPedInAnyVehicle(GetPlayerPed(PlayerId()), false) then
+            DisableControlAction(1, 142, true) --LMB
+            DisableControlAction(1, 114, true) --Vehicle Weapon
+            DisablePlayerFiring(PlayerId(), true)
+			SetPedPathCanUseLadders(ped, false)
+			if IsPedInAnyVehicle(ped, false) then
 				DisableControlAction(0, 59, true) --Vehicle Driving
 			end
+
+
 		end
 	end
 end)
@@ -74,26 +274,41 @@ local Drag = false
 local OfficerDrag = -1
 RegisterNetEvent('SEM_InteractionMenu:Drag')
 AddEventHandler('SEM_InteractionMenu:Drag', function(ID)
-	Drag = not Drag
-	OfficerDrag = ID
-	
-	if not Drag then
+    Drag = not Drag
+    OfficerDrag = ID
+
+    if Drag and isDraggingPlayer then
+        TriggerServerEvent('SEM_InteractionMenu:DragNear', isDraggingPlayer)
+    end
+
+    if not Drag then
         DetachEntity(PlayerPedId(), true, false)
-	end
+        OfficerDrag = -1
+    end
 end)
 
 --Drag Attachment
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(1)
+        Citizen.Wait(3)
 
-        if Drag then
+        if Drag and OfficerDrag ~= -1 then
             local Ped = GetPlayerPed(GetPlayerFromServerId(OfficerDrag))
             local Ped2 = PlayerPedId()
-            AttachEntityToEntity(Ped2, Ped, 4103, 0.35, 0.38, 0.0, 0.0, 0.0, 0.0, false, false, false, false, 2, true)
-            DisableControlAction(1, 140, true) --R
-			DisableControlAction(1, 141, true) --Q
-			DisableControlAction(1, 142, true) --LMB
+
+            if (not IsEntityDead(Ped)) and (Ped ~= 0) then
+                AttachEntityToEntity(Ped2, Ped, 4103, 0.35, 0.38, 0.0, 0.0, 0.0, 0.0, false, false, false, false, 2, true)
+                DisableControlAction(1, 140, true)--R
+                DisableControlAction(1, 141, true)--Q
+                DisableControlAction(1, 142, true)--LMB
+            else
+                DetachEntity(Ped2, true, false)
+                Drag = false
+                OfficerDrag = -1
+            end
+
+        else
+            Citizen.Wait(1000)
         end
     end
 end)
@@ -103,13 +318,13 @@ end)
 --Force Seat Player Event
 RegisterNetEvent('SEM_InteractionMenu:Seat')
 AddEventHandler('SEM_InteractionMenu:Seat', function(Veh)
-	local Pos = GetEntityCoords(PlayerPedId())
-	local EntityWorld = GetOffsetFromEntityInWorldCoords(PlayerPedId(), 0.0, 20.0, 0.0)
+    local Pos = GetEntityCoords(PlayerPedId())
+    local EntityWorld = GetOffsetFromEntityInWorldCoords(PlayerPedId(), 0.0, 20.0, 0.0)
     local RayHandle = CastRayPointToPoint(Pos.x, Pos.y, Pos.z, EntityWorld.x, EntityWorld.y, EntityWorld.z, 10, PlayerPedId(), 0)
     local _, _, _, _, VehicleHandle = GetRaycastResult(RayHandle)
     if VehicleHandle ~= nil then
-		SetPedIntoVehicle(PlayerPedId(), VehicleHandle, 1)
-	end
+        SetPedIntoVehicle(PlayerPedId(), VehicleHandle, 1)
+    end
 end)
 
 
@@ -117,12 +332,12 @@ end)
 --Force Unseat Player Event
 RegisterNetEvent('SEM_InteractionMenu:Unseat')
 AddEventHandler('SEM_InteractionMenu:Unseat', function(ID)
-	local Ped = GetPlayerPed(ID)
-	ClearPedTasksImmediately(Ped)
-	PlayerPos = GetEntityCoords(PlayerPedId(),  true)
-	local X = PlayerPos.x - 0
-	local Y = PlayerPos.y - 0
-
+    local Ped = GetPlayerPed(ID)
+    ClearPedTasksImmediately(Ped)
+    PlayerPos = GetEntityCoords(PlayerPedId(), true)
+    local X = PlayerPos.x - 0
+    local Y = PlayerPos.y - 0
+    
     SetEntityCoords(PlayerPedId(), X, Y, PlayerPos.z)
 end)
 
@@ -136,14 +351,14 @@ AddEventHandler('SEM_InteractionMenu:Spikes-SpawnSpikes', function(Length)
         Notify('~r~You can\'t set spikes while in a vehicle!')
         return
     end
-
-    local SpawnCoords = GetOffsetFromEntityInWorldCoords(GetPlayerPed(PlayerId()) , 0.0, 2.0, 0.0)
+    
+    local SpawnCoords = GetOffsetFromEntityInWorldCoords(GetPlayerPed(PlayerId()), 0.0, 2.0, 0.0)
     for a = 1, Length do
-        local Spike = CreateObject(GetHashKey('P_ld_stinger_s'), SpawnCoords.x, SpawnCoords.y, SpawnCoords.z, 1, 1, 1)
+        local Spike = Citizen.InvokeNative(0x509D5878EB39E842,GetHashKey('P_ld_stinger_s'), SpawnCoords.x, SpawnCoords.y, SpawnCoords.z, 1, 1, 1)
         local NetID = NetworkGetNetworkIdFromEntity(Spike)
         SetNetworkIdExistsOnAllMachines(NetID, true)
         SetNetworkIdCanMigrate(NetID, false)
-        SetEntityHeading(Spike, GetEntityHeading(GetPlayerPed(PlayerId()) ))
+        SetEntityHeading(Spike, GetEntityHeading(GetPlayerPed(PlayerId())))
         PlaceObjectOnGroundProperly(Spike)
         FreezeEntityPosition(Spike, true)
         SpawnCoords = GetOffsetFromEntityInWorldCoords(Spike, 0.0, 4.0, 0.0)
@@ -166,14 +381,14 @@ end)
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(25)
-
-        if IsPedInAnyVehicle(PlayerPedId() , false) then
-            local Vehicle = GetVehiclePedIsIn(PlayerPedId() , false)
-
-            if GetPedInVehicleSeat(Vehicle, -1) == PlayerPedId()  then
+        
+        if IsPedInAnyVehicle(PlayerPedId(), false) then
+            local Vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
+            
+            if GetPedInVehicleSeat(Vehicle, -1) == PlayerPedId() then
                 local VehiclePos = GetEntityCoords(Vehicle, false)
                 local Spike = GetClosestObjectOfType(VehiclePos.x, VehiclePos.y, VehiclePos.z, 2.0, GetHashKey('P_ld_stinger_s'), 1, 1, 1)
-
+                
                 if Spike ~= 0 then
                     local Tires = {
                         {bone = 'wheel_lf', index = 0},
@@ -183,13 +398,13 @@ Citizen.CreateThread(function()
                         {bone = 'wheel_lr', index = 4},
                         {bone = 'wheel_rr', index = 5}
                     }
-        
+                    
                     for a = 1, #Tires do
                         local TirePos = GetWorldPositionOfEntityBone(Vehicle, GetEntityBoneIndexByName(Vehicle, Tires[a].bone))
                         local Spike = GetClosestObjectOfType(TirePos.x, TirePos.y, TirePos.z, 2.0, GetHashKey('P_ld_stinger_s'), 1, 1, 1)
                         local SpikePos = GetEntityCoords(Spike, false)
                         local Distance = Vdist(TirePos.x, TirePos.y, TirePos.z, SpikePos.x, SpikePos.y, SpikePos.z)
-            
+                        
                         if Distance < 1.8 then
                             if not IsVehicleTyreBurst(Vehicle, Tires[a].index, true) or IsVehicleTyreBurst(Vehicle, Tires[a].index, false) then
                                 SetVehicleTyreBurst(Vehicle, Tires[a].index, false, 1000.0)
@@ -197,7 +412,11 @@ Citizen.CreateThread(function()
                         end
                     end
                 end
+            else
+                Citizen.Wait(1000)
             end
+        else
+            Citizen.Wait(1000)
         end
     end
 end)
@@ -218,7 +437,7 @@ AddEventHandler('SEM_InteractionMenu:CallBackup', function(Code, StreetName, Coo
             SetBlipScale(BackupBlip, Size)
             SetBlipColour(BackupBlip, Colour)
             SetBlipAsShortRange(BackupBlip, true)
-        
+
             BeginTextCommandSetBlipName('STRING')
             AddTextComponentString(Name)
             EndTextCommandSetBlipName(BackupBlip)
@@ -255,59 +474,70 @@ CurrentlyJailed = false
 EarlyRelease = false
 OriginalJailTime = 0
 RegisterNetEvent('SEM_InteractionMenu:JailPlayer')
-AddEventHandler('SEM_InteractionMenu:JailPlayer', function(JailTime)
-     if CurrentlyJailed then
+AddEventHandler('SEM_InteractionMenu:JailPlayer', function(JailTime, OriginalTime)
+    if CurrentlyJailed then
         return
     end
     if CurrentlyHospitaled then
         return
     end
 
-    OriginalJailTime = JailTime
+    OriginalJailTime = OriginalTime or JailTime
 
     local Ped = PlayerPedId()
     if DoesEntityExist(Ped) then
+
         Citizen.CreateThread(function()
             SetEntityCoords(Ped, Config.JailLocation.Jail.x, Config.JailLocation.Jail.y, Config.JailLocation.Jail.z)
             SetEntityHeading(Ped, Config.JailLocation.Jail.h)
             CurrentlyJailed = true
+            Citizen.CreateThread(function()
+                while CurrentlyJailed do
+                    Wait(10)
+                    if GetSelectedPedWeapon(Ped) ~= `weapon_unarmed` then
+                        SetCurrentPedWeapon(Ped, `weapon_unarmed`, true)
+                    end
+                end
+            end)
 
             while JailTime >= 0 and not EarlyRelease do
-                SetEntityInvincible(Ped, true)
+                Ped = PlayerPedId()
+                SetPlayerInvincible(PlayerId(), true)
                 if IsPedInAnyVehicle(Ped, false) then
-					ClearPedTasksImmediately(Ped)
+                    TaskLeaveAnyVehicle(Ped,0,0)
                 end
-                
+
                 if JailTime % 30 == 0 and JailTime ~= 0 then
                     TriggerEvent('chat:addMessage', {
                         multiline = true,
                         color = {86, 96, 252},
                         args = {'Judge', JailTime .. ' months until release.'},
                     })
-				end
+                end
 
                 Citizen.Wait(1000)
 
                 local Location = GetEntityCoords(Ped, true)
-				local Distance = Vdist(Config.JailLocation.Jail.x, Config.JailLocation.Jail.y, Config.JailLocation.Jail.z, Location['x'], Location['y'], Location['z'])
-				if Distance > 100 then
+                local Distance = Vdist(Config.JailLocation.Jail.x, Config.JailLocation.Jail.y, Config.JailLocation.Jail.z, Location['x'], Location['y'], Location['z'])
+                if Distance > 75 then
                     SetEntityCoords(Ped, Config.JailLocation.Jail.x, Config.JailLocation.Jail.y, Config.JailLocation.Jail.z)
                     SetEntityHeading(Ped, Config.JailLocation.Jail.h)
-					TriggerEvent('chat:addMessage', {
+                    TriggerEvent('chat:addMessage', {
                         multiline = true,
-                        color = {86, 96, 252},
-                        args = {'Judge', 'Don\'t try escape, its impossible'},
+                        color = {255, 10, 10},
+                        args = {'Guard', 'Don\'t try escape, its impossible'},
                     })
-				end
+                end
 
                 JailTime = JailTime - 1
             end
 
             if EarlyRelease then
-                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, 'Judge', GetPlayerName(PlayerId()) .. ' was released from Jail on Parole')
+                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, '^1JUDGE', 'was released from Jail on Parole')
             else
-                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, 'Judge', GetPlayerName(PlayerId()) .. ' was released from Jail after ' .. OriginalJailTime .. ' months(s).')
+                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, '^1JUDGE', 'was released from Jail after ' .. OriginalJailTime .. ' months(s).')
             end
+            SetPlayerInvincible(PlayerId(), false)
             SetEntityCoords(Ped, Config.JailLocation.Release.x, Config.JailLocation.Release.y, Config.JailLocation.Release.z)
             SetEntityHeading(Ped, Config.JailLocation.Release.h)
             CurrentlyJailed = false
@@ -327,29 +557,25 @@ end)
 CarbineEquipped = false
 ShotgunEquipped = false
 Citizen.CreateThread(function()
-    while true do 
+    while true do
         Citizen.Wait(50)
 
         if Config.UnrackWeapons == 1 then
             local Ped = PlayerPedId()
             local CurrentWeapon = GetSelectedPedWeapon(Ped)
-        
+
             if CarbineEquipped then
                 SetCurrentPedWeapon(Ped, 'weapon_carbinerifle', true)
-            else
-                if tostring(CurrentWeapon) == '-2084633992' then
-                    Notify('~o~You need to unrack your rifle before you can use it')
-                    SetCurrentPedWeapon(Ped, 'weapon_unarmed', true)
-                end
-            end
-            
-            if ShotgunEquipped then
+            elseif tostring(CurrentWeapon) == '-2084633992' then
+                Notify('~o~You need to unrack your rifle before you can use it')
+                SetCurrentPedWeapon(Ped, 'weapon_unarmed', true)
+            elseif ShotgunEquipped then
                 SetCurrentPedWeapon(Ped, 'weapon_pumpshotgun', true)
+            elseif tostring(CurrentWeapon) == '487013001' then
+                Notify('~o~You need to unrack your shotgun before you can use it')
+                SetCurrentPedWeapon(Ped, 'weapon_unarmed', true)
             else
-                if tostring(CurrentWeapon) == '487013001' then
-                    Notify('~o~You need to unrack your shotgun before you can use it')
-                    SetCurrentPedWeapon(Ped, 'weapon_unarmed', true)
-                end
+                Citizen.Wait(1000)
             end
         end
     end
@@ -359,7 +585,7 @@ end)
 
 --Civilian Adverts
 RegisterNetEvent('SEM_InteractionMenu:SyncAds')
-AddEventHandler('SEM_InteractionMenu:SyncAds',function(Text, Name, Loc, File, ID)
+AddEventHandler('SEM_InteractionMenu:SyncAds', function(Text, Name, Loc, File, ID)
     Ad(Text, Name, Loc, File, ID)
 end)
 
@@ -370,7 +596,7 @@ RegisterNetEvent('SEM_InteractionMenu:InventoryResult')
 AddEventHandler('SEM_InteractionMenu:InventoryResult', function(Inventory)
     Citizen.Wait(5000)
 
-    if Inventory ==  nil then
+    if Inventory == nil then
         Inventory = 'Empty'
     end
 
@@ -421,40 +647,41 @@ AddEventHandler('SEM_InteractionMenu:HospitalizePlayer', function(HospitalTime, 
             CurrentlyHospitaled = true
 
             while HospitalTime >= 0 and not EarlyDischarge do
+                Ped = PlayerPedId()
                 SetEntityInvincible(Ped, true)
                 if IsPedInAnyVehicle(Ped, false) then
-					ClearPedTasksImmediately(Ped)
+                    ClearPedTasksImmediately(Ped)
                 end
-                
+
                 if HospitalTime % 30 == 0 and HospitalTime ~= 0 then
                     TriggerEvent('chat:addMessage', {
                         multiline = true,
                         color = {86, 96, 252},
                         args = {'Doctor', HospitalTime .. ' months until release.'},
                     })
-				end
+                end
 
                 Citizen.Wait(1000)
 
                 local Location = GetEntityCoords(Ped, true)
                 local Distance = Vdist(HospitalLocation.Hospital.x, HospitalLocation.Hospital.y, HospitalLocation.Hospital.z, Location['x'], Location['y'], Location['z'])
-				if Distance > 30 then
+                if Distance > 30 then
                     SetEntityCoords(Ped, HospitalLocation.Hospital.x, HospitalLocation.Hospital.y, HospitalLocation.Hospital.z)
                     SetEntityHeading(Ped, HospitalLocation.Hospital.h)
-					TriggerEvent('chat:addMessage', {
+                    TriggerEvent('chat:addMessage', {
                         multiline = true,
                         color = {86, 96, 252},
                         args = {'Doctor', 'You cannot discharge yourself!'},
                     })
-				end
+                end
 
                 HospitalTime = HospitalTime - 1
             end
 
             if EarlyDischarge then
-                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, 'Doctor', GetPlayerName(PlayerId()) .. ' was discharged from Hospital early')
+                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, '^5HOSPITAL', 'was discharged from Hospital early')
             else
-                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, 'Doctor', GetPlayerName(PlayerId()) .. ' was discharged from Hospital after ' .. OriginalHospitalTime .. ' months(s).')
+                TriggerServerEvent('SEM_InteractionMenu:GlobalChat', {86, 96, 252}, '^5HOSPITAL', 'was discharged from Hospital after ' .. OriginalHospitalTime .. ' months(s).')
             end
             SetEntityCoords(Ped, HospitalLocation.Release.x, HospitalLocation.Release.y, HospitalLocation.Release.z)
             SetEntityHeading(Ped, HospitalLocation.Release.h)
@@ -487,7 +714,7 @@ Citizen.CreateThread(function()
             SetBlipScale(StationBlip, 1.0)
             SetBlipColour(StationBlip, Colour)
             SetBlipAsShortRange(StationBlip, true)
-        
+
             BeginTextCommandSetBlipName('STRING')
             AddTextComponentString(Name)
             EndTextCommandSetBlipName(StationBlip)
@@ -557,7 +784,7 @@ end)
 --Emote
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(1)
+        Citizen.Wait(3)
 
         if EmotePlaying then
             if Config.EmoteHelp then
@@ -568,6 +795,8 @@ Citizen.CreateThread(function()
             if (IsControlPressed(0, 22) or IsControlPressed(0, 32) or IsControlPressed(0, 33) or IsControlPressed(0, 34) or IsControlPressed(0, 35)) then
                 CancelEmote()
             end
+        else
+            Citizen.Wait(500)
         end
     end
 end)
@@ -587,7 +816,7 @@ Citizen.CreateThread(function()
                 Emotes = Emotes .. ', ' .. Emote.name
             end
         end
-        
+
         TriggerEvent('chat:addSuggestion', '/emotes', 'List of Current Avaliable Emotes')
         TriggerEvent('chat:addSuggestion', '/emote', 'Play Emote', {{name = 'Emote Name', help = 'Emotes: ' .. Emotes}})
     else
@@ -622,6 +851,7 @@ end)
 
 LEOOnduty = false
 FireOnduty = false
+PublicDuty = false
 RegisterCommand('onduty', function(source, args, rawCommand)
     if Config.LEOAccess == 3 or Config.FireAccess == 3 then
         if Config.OndutyPSWDActive then
@@ -682,7 +912,7 @@ RegisterCommand('cuff', function(source, args, rawCommand)
         if args[1] ~= nil then
             local ID = tonumber(args[1])
             if Config.CommandDistanceChecked then
-                if GetDistance(source) < Config.CommandDistance then
+                if GetDistance(ID) < Config.CommandDistance then
                     TriggerServerEvent('SEM_InteractionMenu:CuffNear', ID)
                 else
                     Notify('~r~That player is too far away')
@@ -697,25 +927,49 @@ RegisterCommand('cuff', function(source, args, rawCommand)
         Notify('~r~Insufficient Permissions')
     end
 end)
-
+local isDraggingPlayer = false
 RegisterCommand('drag', function(source, args, rawCommand)
+    local oldIsDraggingPlayer = isDraggingPlayer
     if LEORestrict() or FireRestrict() then
-        if args[1] ~= nil then
-            local ID = tonumber(args[1])
-            if Config.CommandDistanceChecked then
-                if GetDistance(source) < Config.CommandDistance then
+        if not isDraggingPlayer and not Drag then
+            if args[1] ~= nil then
+                local ID = tonumber(args[1])
+                if Config.CommandDistanceChecked then
+                    if GetDistance(ID) < Config.CommandDistance then
+                        TriggerServerEvent('SEM_InteractionMenu:DragNear', ID)
+                        isDraggingPlayer = ID
+                    else
+                        Notify('~r~That player is too far away')
+                    end
+                elseif ID then
                     TriggerServerEvent('SEM_InteractionMenu:DragNear', ID)
-                else
-                    Notify('~r~That player is too far away')
+                    isDraggingPlayer = ID
                 end
             else
-                TriggerServerEvent('SEM_InteractionMenu:DragNear', ID)
+                local closestPlayer = GetClosestPlayer()
+                if closestPlayer then
+                    TriggerServerEvent('SEM_InteractionMenu:DragNear', closestPlayer)
+                    isDraggingPlayer = closestPlayer
+                end
             end
+        elseif isDraggingPlayer then
+            TriggerServerEvent('SEM_InteractionMenu:DragNear', isDraggingPlayer)
         else
-            TriggerServerEvent('SEM_InteractionMenu:DragNear', GetClosestPlayer())
+            Notify("~r~You are being dragged!")
         end
     else
         Notify('~r~Insufficient Permissions')
+    end
+    if oldIsDraggingPlayer == false and isDraggingPlayer ~= false then
+        Citizen.CreateThread(function()
+            while isDraggingPlayer ~= false do
+                Wait(1000)
+                if GetDistance(isDraggingPlayer) > 3 then
+                    isDraggingPlayer = false
+                    break
+                end
+            end
+        end)
     end
 end)
 
@@ -733,16 +987,16 @@ RegisterCommand('loadout', function(source, args, rawCommand)
     if LEORestrict() then
         if args[1] then
             local RequestedLoadout = args[1]
-            
+
             for Name, Loadout in pairs(Config.LEOLoadouts) do
                 if Name:lower() == RequestedLoadout:lower() then
-                    SetEntityHealth(GetPlayerPed(-1), 200)
-                    RemoveAllPedWeapons(GetPlayerPed(-1), true)
-                    AddArmourToPed(GetPlayerPed(-1), 100)
+                    SetEntityHealth(PlayerPedId(), 200)
+                    RemoveAllPedWeapons(PlayerPedId(), true)
+                    AddArmourToPed(PlayerPedId(), 100)
 
                     for _, Weapon in pairs(Loadout) do
                         GiveWeapon(Weapon.weapon)
-                                                                
+
                         for _, Component in pairs(Weapon.components) do
                             AddWeaponComponent(Weapon.weapon, Component)
                         end
@@ -795,7 +1049,7 @@ RegisterCommand('huk', function(source, args, rawCommand)
                 TaskPlayAnim(Ped, 'random@arrests', 'kneeling_arrest_get_up', 8.0, 1.0, -1, 128, 0, 0, 0, 0)
             else
                 TaskPlayAnim(Ped, 'random@arrests', 'idle_2_hands_up', 8.0, 1.0, -1, 2, 0, 0, 0, 0)
-                Wait (4000)
+                Wait(4000)
                 TaskPlayAnim(Ped, 'random@arrests', 'kneeling_arrest_idle', 8.0, 1.0, -1, 2, 0, 0, 0, 0)
             end
         end)
@@ -865,7 +1119,7 @@ RegisterCommand('emotes', function(source, args, rawCommand)
 
         TriggerEvent('chat:addMessage', {
             multiline = true,
-            color = {255, 0 ,0},
+            color = {255, 0, 0},
             args = {'Emotes', '\n^r^7' .. Emotes},
         })
     end

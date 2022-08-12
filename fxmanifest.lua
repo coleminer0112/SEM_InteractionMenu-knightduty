@@ -29,12 +29,14 @@ client_scripts {
     'config.lua',
     'functions.lua',
     'menu.lua',
+    'cl_persistence.lua'
 }
 
 server_scripts {
     'config.lua',
     'server.lua',
     'functions.lua',
+    'sv_persistence.lua'
 }
 
 exports {

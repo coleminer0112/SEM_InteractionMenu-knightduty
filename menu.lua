@@ -59,7 +59,6 @@ function Menu()
 
 
 
-
     if LEORestrict() then
         local LEOMenu = _MenuPool:AddSubMenu(MainMenu, 'LEO Toolbox', 'Law Enforcement Related Menu', true)
         LEOMenu:SetMenuWidthOffset(Config.MenuWidth)
@@ -95,23 +94,27 @@ function Menu()
                 end
                 LEOActions:AddItem(Inventory)
                 LEOActions:AddItem(BAC)
-				if Config.LEOJail then
-                    LEOActions:AddItem(Jail)
-                    if UnjailAllowed then
-                        LEOActions:AddItem(Unjail)
+
+                if not PublicDuty then
+                    if Config.LEOJail then
+                        LEOActions:AddItem(Jail)
+                        if UnjailAllowed then
+                            LEOActions:AddItem(Unjail)
+                        end
                     end
-				end
-                LEOActions:AddItem(Spikes)
-                LEOActions:AddItem(DelSpikes)
-                LEOActions:AddItem(Shield)
+                    LEOActions:AddItem(Spikes)
+                    LEOActions:AddItem(DelSpikes)
+                    LEOActions:AddItem(Shield)
+                    if Config.DisplayProps then
+                        LEOActions:AddItem(Props)
+                        LEOActions:AddItem(RemoveProps)
+                    end
+                end
                 if Config.UnrackWeapons == 1 or Config.UnrackWeapons == 2 then
                     LEOActions:AddItem(CarbineRifle)
                     LEOActions:AddItem(Shotgun)
                 end
-                if Config.DisplayProps then
-                    LEOActions:AddItem(Props)
-                    LEOActions:AddItem(RemoveProps)
-                end
+
                 Cuff.Activated = function(ParentMenu, SelectedItem)
                     local player = GetClosestPlayer()
                     if player ~= false then
@@ -133,7 +136,7 @@ function Menu()
                     end
                 end
                 Unseat.Activated = function(ParentMenu, SelectedItem)
-                    if IsPedInAnyVehicle(GetPlayerPed(-1), true) then
+                    if IsPedInAnyVehicle(PlayerPedId(), true) then
                         Notify('~o~You need to be outside of the vehicle')
                         return
                     end
@@ -162,8 +165,16 @@ function Menu()
                 end
                 Jail.Activated = function(ParentMenu, SelectedItem)
                     local PlayerID = tonumber(KeyboardInput('Player ID:', 10))
+                    
                     if PlayerID == nil then
                         Notify('~r~Please enter a player ID')
+                        return
+                    end
+
+                    local Reason = KeyboardInput('Charges:', 60)
+
+                    if Reason == nil then
+                        Notify('~r~Please enter charges')
                         return
                     end
 
@@ -173,11 +184,10 @@ function Menu()
                     end
                     if JailTime > Config.MaxJailTime then
                         Notify('~y~Exceeded Max Time\nMax Time: ' .. Config.MaxJailTime .. ' seconds')
-                        JailTime = Config.MaxJailTime
                     end
 
-                    Notify('Player Jailed for ~b~' .. JailTime .. ' seconds')
-                    TriggerServerEvent('SEM_InteractionMenu:Jail', PlayerID, JailTime)
+                    Notify('Attempting Player Jail for ~b~' .. JailTime .. ' seconds')
+                    TriggerServerEvent('SEM_InteractionMenu:Jail', PlayerID, JailTime, Reason)
                 end
                 Unjail.Activated = function(ParentMenu, SelectedItem)
                     local PlayerID = tonumber(KeyboardInput('Player ID:', 10))
@@ -199,10 +209,10 @@ function Menu()
                     end
                 end
                 CarbineRifle.Activated = function(ParentMenu, SelectedItem)
-                    if (GetVehicleClass(GetVehiclePedIsIn(GetPlayerPed(-1))) == 18) then
+                    if (GetVehicleClass(GetVehiclePedIsIn(PlayerPedId())) == 18) then
                         CarbineEquipped = not CarbineEquipped
                         ShotgunEquipped = false
-                    elseif (GetVehicleClass(GetVehiclePedIsIn(GetPlayerPed(-1))) ~= 18) then
+                    elseif (GetVehicleClass(GetVehiclePedIsIn(PlayerPedId())) ~= 18) then
                         Notify('~r~You Must be in a Police Vehicle to rack/unrack your Carbine Rifle')
                         return
                     end
@@ -214,14 +224,14 @@ function Menu()
                         AddWeaponComponent('weapon_carbinerifle', 'component_at_ar_afgrip')
                     else 
                         Notify('~y~Carbine Rifle Unequipped')
-                        RemoveWeaponFromPed(GetPlayerPed(-1), 'weapon_carbinerifle')
+                        RemoveWeaponFromPed(PlayerPedId(), 'weapon_carbinerifle')
                     end
                 end
                 Shotgun.Activated = function(ParentMenu, SelectedItem)
-                    if (GetVehicleClass(GetVehiclePedIsIn(GetPlayerPed(-1))) == 18) then
+                    if (GetVehicleClass(GetVehiclePedIsIn(PlayerPedId())) == 18) then
                         ShotgunEquipped = not ShotgunEquipped
                         CarbineEquipped = false
-                    elseif (GetVehicleClass(GetVehiclePedIsIn(GetPlayerPed(-1))) ~= 18) then
+                    elseif (GetVehicleClass(GetVehiclePedIsIn(PlayerPedId())) ~= 18) then
                         Notify('~r~You Must be in a Police Vehicle to rack/unrack your Shotgun')
                         return
                     end
@@ -232,7 +242,7 @@ function Menu()
                         AddWeaponComponent('weapon_pumpshotgun', 'component_at_ar_flsh')
                     else
                         Notify('~y~Shotgun Unequipped')
-                        RemoveWeaponFromPed(GetPlayerPed(-1), 'weapon_pumpshotgun')
+                        RemoveWeaponFromPed(PlayerPedId(), 'weapon_pumpshotgun')
                     end
                 end
                 LEOActions.OnListSelect = function(sender, item, index)
@@ -252,7 +262,7 @@ function Menu()
                     end
                 end
 
-            if Config.DisplayBackup then
+            if Config.DisplayBackup and not PublicDuty then
                 local LEOBackup = _MenuPool:AddSubMenu(LEOMenu, 'Backup', '', true)
                 LEOBackup:SetMenuWidthOffset(Config.MenuWidth)
                     --[[
@@ -272,35 +282,35 @@ function Menu()
                     LEOBackup:AddItem(BK99)
                     LEOBackup:AddItem(PanicBTN)
                     BK1.Activated = function(ParentMenu, SelectedItem)
-                        local Coords = GetEntityCoords(GetPlayerPed(-1))
+                        local Coords = GetEntityCoords(PlayerPedId())
                         local Street1, Street2 = GetStreetNameAtCoord(Coords.x, Coords.y, Coords.z)
                         local StreetName = GetStreetNameFromHashKey(Street1)
 
                         TriggerServerEvent('SEM_InteractionMenu:Backup', 1, StreetName, Coords)
                     end
                     BK2.Activated = function(ParentMenu, SelectedItem)
-                        local Coords = GetEntityCoords(GetPlayerPed(-1))
+                        local Coords = GetEntityCoords(PlayerPedId())
                         local Street1, Street2 = GetStreetNameAtCoord(Coords.x, Coords.y, Coords.z)
                         local StreetName = GetStreetNameFromHashKey(Street1)
 
                         TriggerServerEvent('SEM_InteractionMenu:Backup', 2, StreetName, Coords)
                     end
                     BK3.Activated = function(ParentMenu, SelectedItem)
-                        local Coords = GetEntityCoords(GetPlayerPed(-1))
+                        local Coords = GetEntityCoords(PlayerPedId())
                         local Street1, Street2 = GetStreetNameAtCoord(Coords.x, Coords.y, Coords.z)
                         local StreetName = GetStreetNameFromHashKey(Street1)
 
                         TriggerServerEvent('SEM_InteractionMenu:Backup', 3, StreetName, Coords)
                     end
                     BK99.Activated = function(ParentMenu, SelectedItem)
-                        local Coords = GetEntityCoords(GetPlayerPed(-1))
+                        local Coords = GetEntityCoords(PlayerPedId())
                         local Street1, Street2 = GetStreetNameAtCoord(Coords.x, Coords.y, Coords.z)
                         local StreetName = GetStreetNameFromHashKey(Street1)
 
                         TriggerServerEvent('SEM_InteractionMenu:Backup', 99, StreetName, Coords)
                     end
                     PanicBTN.Activated = function(ParentMenu, SelectedItem)
-                        local Coords = GetEntityCoords(GetPlayerPed(-1))
+                        local Coords = GetEntityCoords(PlayerPedId())
                         local Street1, Street2 = GetStreetNameAtCoord(Coords.x, Coords.y, Coords.z)
                         local StreetName = GetStreetNameFromHashKey(Street1)
 
@@ -366,9 +376,9 @@ function Menu()
                         if item == Loadouts then
                             for Name, Loadout in pairs(Config.LEOLoadouts) do
                                 if Name == item:IndexToItem(index) then
-                                    SetEntityHealth(GetPlayerPed(-1), 200)
-                                    RemoveAllPedWeapons(GetPlayerPed(-1), true)
-                                    AddArmourToPed(GetPlayerPed(-1), 100)
+                                    SetEntityHealth(PlayerPedId(), 200)
+                                    RemoveAllPedWeapons(PlayerPedId(), true)
+                                    AddArmourToPed(PlayerPedId(), 100)
 
                                     for _, Weapon in pairs(Loadout) do
                                         GiveWeapon(Weapon.weapon)
@@ -498,7 +508,8 @@ function Menu()
                 Drag.Activated = function(ParentMenu, SelectedItem)
                     local player = GetClosestPlayer()
                     if player ~= false then
-                        TriggerServerEvent('SEM_InteractionMenu:DragNear', player)
+                        ExecuteCommand('drag '..tostring(player))
+                        --TriggerServerEvent('SEM_InteractionMenu:DragNear', player)
                     end
                 end
                 Seat.Activated = function(ParentMenu, SelectedItem)
@@ -508,7 +519,7 @@ function Menu()
                     end
                 end
                 Unseat.Activated = function(ParentMenu, SelectedItem)
-                    if IsPedInAnyVehicle(GetPlayerPed(-1), true) then
+                    if IsPedInAnyVehicle(PlayerPedId(), true) then
                         Notify('~o~You need to be outside of the vehicle')
                         return
                     end
@@ -531,6 +542,12 @@ function Menu()
                                     return
                                 end
 
+                                local Reason = KeyboardInput('Condition:', 60)
+                                if Reason == nil then
+                                    Notify('~r~Please enter the condition of the patient')
+                                    return
+                                end
+
                                 local HospitalTime = tonumber(KeyboardInput('Time: (Seconds) - Max Time: ' .. Config.MaxHospitalTime .. ' | Default Time: 30', 3))
                                 if HospitalTime == nil then
                                     HospitalTime = 30
@@ -541,7 +558,7 @@ function Menu()
                                 end
 
                                 Notify('Player Hospitalized for ~b~' .. HospitalTime .. ' seconds')
-                                TriggerServerEvent('SEM_InteractionMenu:Hospitalize', PlayerID, HospitalTime, HospitalInfo)
+                                TriggerServerEvent('SEM_InteractionMenu:Hospitalize', PlayerID, HospitalTime, HospitalInfo, Reason)
                             end
                         end
                     local Unhospitalize = NativeUI.CreateItem('Unhospitalize', 'Unhospitalize a player')
@@ -660,13 +677,13 @@ function Menu()
                         if item == Loadouts then
                             local SelectedLoadout = item:IndexToItem(index)
                             if SelectedLoadout == 'Clear' then
-                                SetEntityHealth(GetPlayerPed(-1), 200)
-                                RemoveAllPedWeapons(GetPlayerPed(-1), true)
+                                SetEntityHealth(PlayerPedId(), 200)
+                                RemoveAllPedWeapons(PlayerPedId(), true)
                                 Notify('~r~All Weapons Cleared!')
                             elseif SelectedLoadout == 'Standard' then
-                                SetEntityHealth(GetPlayerPed(-1), 200)
-                                RemoveAllPedWeapons(GetPlayerPed(-1), true)
-                                AddArmourToPed(GetPlayerPed(-1), 100)
+                                SetEntityHealth(PlayerPedId(), 200)
+                                RemoveAllPedWeapons(PlayerPedId(), true)
+                                AddArmourToPed(PlayerPedId(), 100)
                                 GiveWeapon('weapon_flashlight')
                                 GiveWeapon('weapon_fireextinguisher')
                                 GiveWeapon('weapon_flare')
@@ -769,7 +786,7 @@ function Menu()
                 DropWeapon.Activated = function(ParentMenu, SelectedItem)
                     local CurrentWeapon = GetSelectedPedWeapon(PlayerPedId())
                     SetCurrentPedWeapon(PlayerPedId(), 'weapon_unarmed', true)
-                    SetPedDropsInventoryWeapon(GetPlayerPed(-1), CurrentWeapon, -2.0, 0.0, 0.5, 30)
+                    SetPedDropsInventoryWeapon(PlayerPedId(), CurrentWeapon, -2.0, 0.0, 0.5, 30)
                     Notify('~r~Weapon Dropped!')
                 end
             if Config.ShowCivAdverts then
@@ -859,12 +876,12 @@ function Menu()
             VehicleMenu.OnSliderChange = function(sender, item, index)
                 if item == Seat then
                     VehicleSeat = item:IndexToItem(index)
-                    local Veh = GetVehiclePedIsIn(GetPlayerPed(-1),false)
+                    local Veh = GetVehiclePedIsIn(PlayerPedId(),false)
                     SetPedIntoVehicle(PlayerPedId(), Veh, VehicleSeat)
                 end
             end
             VehicleMenu.OnListSelect = function(sender, item, index)
-                local Ped = GetPlayerPed(-1)
+                local Ped = PlayerPedId()
                 local Veh = GetVehiclePedIsIn(Ped, false)
 
                 if item == Window then
