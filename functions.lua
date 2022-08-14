@@ -39,7 +39,7 @@ function GetDistanceBetweenCoords(...)
     return #(set1 - set2)
 end
 
-
+--[[
 	SEM_InteractionMenu (functions.lua) - Created by Scott M
 	Current Version: v1.7.1 (Sep 2021)
 	
